@@ -2,8 +2,21 @@
 Planning logic for generating study schedules
 """
 from typing import List
-from datetime import datetime, timedelta, time as dt_time
-from models import Task, TimeBlock, PlanRequest
+from datetime import datetime, timedelta
+from models import Task, TimeBlock, PlanRequest, Availability
+
+
+def _parse_time_str(s: str):
+    """Parse a short time string into a time object.
+
+    Accepts 'HH:MM' and 'HH:MM:SS'. Raises ValueError if parsing fails.
+    """
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.strptime(s, fmt).time()
+        except Exception:
+            continue
+    raise ValueError(f"Invalid time format: {s}")
 
 
 def generate_plan(plan_request: PlanRequest) -> List[TimeBlock]:
@@ -46,7 +59,7 @@ def generate_plan(plan_request: PlanRequest) -> List[TimeBlock]:
         plan_request.tasks,
         key=lambda t: (
             -priority_order.get(t.priority, 0),
-            -task_type_order.get(t.task_type, 0),
+            -task_type_order.get(t.type, 0),
             t.due_date if t.due_date else datetime.max
         )
     )
@@ -76,9 +89,13 @@ def generate_plan(plan_request: PlanRequest) -> List[TimeBlock]:
         for day_offset in range(14):  # Look ahead 2 weeks
             check_date = current_date + timedelta(days=day_offset)
             day_name = check_date.strftime('%A').lower()
-            
+            # Use the first availability entry (clients send a list)
+            if not plan_request.availability:
+                break
+            avail: Availability = plan_request.availability[0]
+
             # Check if this day is available
-            if day_name not in plan_request.availability.days:
+            if day_name not in avail.days:
                 continue
             
             # Check if we haven't exceeded daily study hours
@@ -88,14 +105,14 @@ def generate_plan(plan_request: PlanRequest) -> List[TimeBlock]:
             if hours_used >= plan_request.study_hours_per_day:
                 continue
             
-            # Calculate start and end times
-            avail_start = plan_request.availability.start_time
-            avail_end = plan_request.availability.end_time
-            
+            # Calculate start and end times from string availability
+            avail_start = _parse_time_str(avail.start_time)
+            avail_end = _parse_time_str(avail.end_time)
+
             # Create datetime objects for start and end
             block_start = datetime.combine(check_date.date(), avail_start) + timedelta(hours=hours_used)
             block_end = block_start + timedelta(minutes=duration_minutes)
-            
+
             # Check if block fits within availability
             available_end = datetime.combine(check_date.date(), avail_end)
             if block_end > available_end:
@@ -106,10 +123,10 @@ def generate_plan(plan_request: PlanRequest) -> List[TimeBlock]:
                 user_id=plan_request.user_id,
                 task_id=task.id,
                 title=task.title,
-                description=f"{task.task_type.capitalize()} - {task.title}",
+                description=f"{task.type.capitalize()} - {task.title}",
                 start_time=block_start,
                 end_time=block_end,
-                block_type='study' if task.task_type != 'exam' else 'exam',
+                block_type='study' if task.type != 'exam' else 'exam',
                 is_completed=False
             )
             

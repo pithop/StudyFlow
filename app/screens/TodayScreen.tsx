@@ -14,18 +14,19 @@ import {
   RefreshControl,
   TouchableOpacity,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import NextActionCard from '../components/NextActionCard';
+import { getAuthHeaders } from '../hooks/useAuth';
 
 // API Configuration
-const API_BASE_URL = 'http://localhost:5050/v1';
-const USER_ID = 'demo';
+const API_BASE_URL = 'http://172.20.10.2:5050/v1';
 
 interface Task {
   id: string;
   user_id: string;
   title: string;
   description?: string;
-  task_type: string;
+  type: string;
   priority: string;
   status: string;
   due_date?: string;
@@ -66,10 +67,11 @@ const TodayScreen: React.FC = () => {
 
   const load = async () => {
     try {
+      const headers = await getAuthHeaders();
       // Fetch both endpoints in parallel
       const [todayResponse, nextActionResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/tasks/today?user_id=${USER_ID}`),
-        fetch(`${API_BASE_URL}/next-action?user_id=${USER_ID}`),
+        fetch(`${API_BASE_URL}/tasks/today`, { headers }),
+        fetch(`${API_BASE_URL}/next-action`, { headers }),
       ]);
 
       // Parse responses
@@ -98,12 +100,10 @@ const TodayScreen: React.FC = () => {
   };
 
   const handleNextActionPress = () => {
-    console.log('Next action pressed:', nextAction);
     // TODO: Navigate to task details or start timer
   };
 
   const handleTaskPress = (task: Task) => {
-    console.log('Task pressed:', task);
     // TODO: Navigate to task details
   };
 
@@ -119,39 +119,64 @@ const TodayScreen: React.FC = () => {
   const renderTask = ({ item }: { item: Task }) => {
     // Find corresponding time block
     const timeBlock = todayBlocks.find((block) => block.task_id === item.id);
+    const isCompleted = item.status === 'completed';
+    const priorityColor = getPriorityColor(item.priority);
+    const typeIcon = getTypeIcon(item.type);
     
     return (
       <TouchableOpacity
-        style={styles.taskCard}
+        style={[styles.taskCard, isCompleted && styles.taskCardCompleted]}
         onPress={() => handleTaskPress(item)}
         activeOpacity={0.7}
       >
-        <View style={styles.taskHeader}>
-          <Text style={styles.taskTitle}>{item.title}</Text>
-          <View style={[styles.priorityBadge, getPriorityColor(item.priority)]}>
-            <Text style={styles.priorityText}>{item.priority.toUpperCase()}</Text>
+        <View style={styles.taskContent}>
+          {/* Left accent bar */}
+          <View style={[styles.taskAccent, priorityColor]} />
+          
+          <View style={styles.taskMain}>
+            <View style={styles.taskHeader}>
+              <View style={styles.taskHeaderLeft}>
+                <Ionicons name={typeIcon} size={20} color={priorityColor.backgroundColor} />
+                <Text style={[styles.taskTitle, isCompleted && styles.taskTitleCompleted]}>
+                  {item.title}
+                </Text>
+              </View>
+              <View style={[styles.priorityBadge, priorityColor]}>
+                <Text style={styles.priorityText}>{item.priority}</Text>
+              </View>
+            </View>
+            
+            {item.description && (
+              <Text style={styles.taskDescription} numberOfLines={2}>
+                {item.description}
+              </Text>
+            )}
+            
+            <View style={styles.taskFooter}>
+              {timeBlock && (
+                <View style={styles.timeChip}>
+                  <Ionicons name="time-outline" size={14} color="#60A5FA" />
+                  <Text style={styles.timeText}>
+                    {formatTime(timeBlock.start_time)} - {formatTime(timeBlock.end_time)}
+                  </Text>
+                </View>
+              )}
+              
+              {item.estimated_duration && (
+                <View style={styles.durationChip}>
+                  <Ionicons name="hourglass-outline" size={14} color="#A78BFA" />
+                  <Text style={styles.durationText}>{item.estimated_duration} min</Text>
+                </View>
+              )}
+              
+              {isCompleted && (
+                <View style={styles.completedChip}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                  <Text style={styles.completedText}>Terminé</Text>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
-        
-        {item.description && (
-          <Text style={styles.taskDescription} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
-        
-        {timeBlock && (
-          <View style={styles.timeInfo}>
-            <Text style={styles.timeText}>
-              🕒 {formatTime(timeBlock.start_time)} - {formatTime(timeBlock.end_time)}
-            </Text>
-          </View>
-        )}
-        
-        <View style={styles.taskFooter}>
-          <Text style={styles.taskType}>{item.task_type}</Text>
-          {item.estimated_duration && (
-            <Text style={styles.duration}>{item.estimated_duration} min</Text>
-          )}
         </View>
       </TouchableOpacity>
     );
@@ -167,6 +192,21 @@ const TodayScreen: React.FC = () => {
         return styles.priorityMedium;
       default:
         return styles.priorityLow;
+    }
+  };
+
+  const getTypeIcon = (type: string): any => {
+    switch (type) {
+      case 'exam':
+        return 'school-outline';
+      case 'project':
+        return 'briefcase-outline';
+      case 'homework':
+        return 'book-outline';
+      case 'reading':
+        return 'reader-outline';
+      default:
+        return 'document-text-outline';
     }
   };
 
@@ -212,6 +252,7 @@ const TodayScreen: React.FC = () => {
                         : 'No deadline'
                     }`
               }
+              estimatedDuration={nextAction.task.estimated_duration}
               onPress={handleNextActionPress}
             />
           ) : (
@@ -344,8 +385,9 @@ const styles = StyleSheet.create({
   },
   taskFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
   },
   taskType: {
     fontSize: 12,
@@ -355,6 +397,63 @@ const styles = StyleSheet.create({
   duration: {
     fontSize: 12,
     color: '#64748B',
+  },
+  taskCardCompleted: {
+    opacity: 0.6,
+  },
+  taskContent: {
+    flexDirection: 'row',
+  },
+  taskAccent: {
+    width: 4,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    marginRight: -16,
+  },
+  taskMain: {
+    flex: 1,
+  },
+  taskHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  taskTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: '#64748B',
+  },
+  timeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  durationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  durationText: {
+    fontSize: 12,
+    color: '#A78BFA',
+  },
+  completedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  completedText: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '600',
   },
   emptyContainer: {
     padding: 32,

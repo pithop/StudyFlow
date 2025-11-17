@@ -1,0 +1,19 @@
+# Python virtual environments
+venv/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local environment files
+api/.env
+
+# Node modules
+app/node_modules/
+
+# Editor backups
+*.swp
+*.swo
+.idea/
+.vscode/

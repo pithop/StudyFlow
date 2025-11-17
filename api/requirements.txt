@@ -3,3 +3,9 @@ uvicorn[standard]
 pydantic
 asyncpg
 PyPDF2
+httpx
+python-jose
+icalendar
+requests
+python-dotenv
+recurring-ical-events
